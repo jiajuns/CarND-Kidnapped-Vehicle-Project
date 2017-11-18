@@ -25,6 +25,8 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	// Add random Gaussian noise to each particle.
 	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
 	default_random_engine gen;
+
+	num_particles = 101;
 	normal_distribution<double> dist_x(x, std[0]);
 	normal_distribution<double> dist_y(y, std[1]);
 	normal_distribution<double> dist_theta(theta, std[2]);
@@ -38,7 +40,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 		p.weight = 1.0f;
 		particles.push_back(p);
 	}
-	is_initialized = false;
+	is_initialized = true;
 }
 
 void ParticleFilter::prediction(double delta_t, double std_pos[], double velocity, double yaw_rate) {
@@ -47,11 +49,20 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	//  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
 	//  http://www.cplusplus.com/reference/random/default_random_engine/
 	default_random_engine gen;
-	for (int i=0; i<num_particles; ++i){
-		double mean_x = velocity / yaw_rate * (sin(particles[i].theta + yaw_rate*delta_t) - sin(particles[i].theta));
-		double mean_y = velocity / yaw_rate * (cos(particles[i].theta) - cos(particles[i].theta + yaw_rate*delta_t));
-		double mean_theta = yaw_rate*delta_t;
+	double mean_x;
+	double mean_y;
+	double mean_theta;
 
+	for (int i=0; i<num_particles; ++i){
+		if (fabs(yaw_rate) < 0.00001){
+      		mean_x = particles[i].x + velocity * delta_t * cos(particles[i].theta);
+      		mean_y = particles[i].y + velocity * delta_t * sin(particles[i].theta);
+			mean_theta =  particles[i].theta;
+		} else {
+			mean_x = particles[i].x + velocity / yaw_rate * (sin(particles[i].theta + yaw_rate*delta_t) - sin(particles[i].theta));
+			mean_y = particles[i].y + velocity / yaw_rate * (cos(particles[i].theta) - cos(particles[i].theta + yaw_rate*delta_t));
+			mean_theta = yaw_rate*delta_t;
+		}
 		normal_distribution<double> dist_x(mean_x, std_pos[0]);
 		normal_distribution<double> dist_y(mean_y, std_pos[1]);
 		normal_distribution<double> dist_theta(mean_theta, std_pos[2]);
@@ -133,7 +144,6 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 		}
 
 		dataAssociation(predictions, transform_obs);
-
 		particles[i].weight = 1.0f;
 
 		for (int j=0; j<transform_obs.size(); ++j){
@@ -144,6 +154,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
 			double mu_x;
 			double mu_y;
+
 			for (int k=0; k<predictions.size(); ++k){
 				if (id_obs == predictions[k].id){
 					mu_x = predictions[k].x;
@@ -161,7 +172,39 @@ void ParticleFilter::resample() {
 	// TODO: Resample particles with replacement with probability proportional to their weight.
 	// NOTE: You may find std::discrete_distribution helpful here.
 	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
+	double max_w = 0.0;
+	for (int i=0; i<particles.size(); i++){
+		if (particles[i].weight > max_w){
+			max_w = particles[i].weight;
+		}
+	}
+	cout << max_w;
+	vector<Particle> particles3;
+	default_random_engine gen;
+  	uniform_real_distribution<double> distribution(0.0, 2*max_w);
 
+	double beta = 0;
+	int index = 0;
+	for (int i=0; i<particles.size(); ++i){
+		beta += distribution(gen);
+		while(particles[index].weight < beta){
+			beta -= particles[index].weight;
+			index += 1;
+			if (index < particles.size()){
+				index = index;
+			} else {
+				index = index - particles.size();
+			}
+		}
+		Particle p;
+		p.id = i;
+		p.x = particles[index].x;
+		p.y = particles[index].y;
+		p.theta = particles[index].theta;
+		p.weight = 1.0f;
+		particles3.push_back(p);
+	}
+	particles = particles3;
 }
 
 Particle ParticleFilter::SetAssociations(Particle particle, std::vector<int> associations, std::vector<double> sense_x, std::vector<double> sense_y)
