@@ -53,6 +53,10 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	double mean_y;
 	double mean_theta;
 
+	normal_distribution<double> noise_x(0, std_pos[0]);
+	normal_distribution<double> noise_y(0, std_pos[1]);
+	normal_distribution<double> noise_theta(0, std_pos[2]);
+
 	for (int i=0; i<num_particles; ++i){
 		if (fabs(yaw_rate) < 0.00001){
       		mean_x = particles[i].x + velocity * delta_t * cos(particles[i].theta);
@@ -63,13 +67,10 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 			mean_y = particles[i].y + velocity / yaw_rate * (cos(particles[i].theta) - cos(particles[i].theta + yaw_rate*delta_t));
 			mean_theta = particles[i].theta + yaw_rate*delta_t;
 		}
-		normal_distribution<double> dist_x(mean_x, std_pos[0]);
-		normal_distribution<double> dist_y(mean_y, std_pos[1]);
-		normal_distribution<double> dist_theta(mean_theta, std_pos[2]);
 
-		particles[i].x = dist_x(gen);
-		particles[i].y = dist_y(gen);
-		particles[i].theta = dist_theta(gen);
+		particles[i].x = mean_x + noise_x(gen);
+		particles[i].y = mean_y + noise_y(gen);
+		particles[i].theta = mean_theta + noise_theta(gen);
 	}
 }
 
@@ -112,6 +113,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   http://planning.cs.uiuc.edu/node99.html
 	double sig_x = std_landmark[0];
 	double sig_y = std_landmark[1];
+	double gauss_norm = (1.0/(2 * M_PI * sig_x * sig_y));
 
 	for (int i=0; i<num_particles; ++i){
 
@@ -123,7 +125,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 			double lm_y = map_landmarks.landmark_list[s].y_f;
 			int lm_id = map_landmarks.landmark_list[s].id_i;
 
-			if (fabs(lm_x - particles[i].x) <= sensor_range && fabs(lm_y - particles[i].y) <= sensor_range){
+			if (dist(lm_x, lm_y, particles[i].x, particles[i].y) <= sensor_range){
 				predictions.push_back(LandmarkObs{lm_id, lm_x, lm_y});
 			}
 		}
@@ -148,14 +150,20 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
 			double mu_x;
 			double mu_y;
+			bool find_prediction = false;
 
 			for (int k=0; k<predictions.size(); ++k){
 				if (id_obs == predictions[k].id){
 					mu_x = predictions[k].x;
 					mu_y = predictions[k].y;
+					find_prediction = true;
 				}
 			}
-			double gauss_norm = (1.0/(2 * M_PI * sig_x * sig_y));
+
+			if (find_prediction == false){
+				continue;
+			}
+
 			double exponent = (pow(x_obs - mu_x, 2))/(2 * pow(sig_x, 2)) + (pow(y_obs - mu_y, 2))/(2 * pow(sig_y, 2));
 			particles[i].weight *= gauss_norm * exp(-exponent);
 		}
